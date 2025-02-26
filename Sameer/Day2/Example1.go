@@ -1,27 +1,47 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
+
+func countFreq(s string, ch chan map[int]int) {
+	lettercount := make(map[int]int)
+	for i := 0; i < len(s); i++ {
+
+		lettercount[int(s[i])]++
+	}
+	ch <- lettercount
+}
 
 func main() {
 
-	fruitsSlice := []string{"apple, banana, orange, mango, pineapple"}
+	fruitsSlice := []string{"apple", "banana", "orange", "mango", "pineapple"}
+	final := make(map[int]int)
+	ch := make(chan map[int]int, len(fruitsSlice))
 
-	countMap := make(map[int]int)
+	var wg sync.WaitGroup
 
 	for i := 0; i < len(fruitsSlice); i++ {
-		fmt.Println(fruitsSlice[i])
+		wg.Add(1)
+		go func(i int, v string) {
+			defer wg.Done()
+			countFreq(fruitsSlice[i], ch)
+		}(i, fruitsSlice[i])
+	}
 
-		for j := 0; j < len(fruitsSlice[i]); j++ {
-			countMap[int(fruitsSlice[i][j])]++
+	wg.Wait()
+	close(ch)
 
+	for i := 0; i < len(fruitsSlice); i++ {
+		freqMap := <-ch
+		for k, v := range freqMap {
+			final[k] += v
 		}
 	}
-	for i := 0; i < 26; i++ {
 
-		fmt.Printf("Frequency of %c is ", rune(i+97))
-		fmt.Print(countMap[i+97])
-		fmt.Println()
-
+	for i := 97; i < 122; i++ {
+		fmt.Printf("%c : %d\n", i, final[i])
 	}
 
 }
