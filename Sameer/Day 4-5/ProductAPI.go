@@ -21,7 +21,24 @@ func connectDatabase() {
 	}
 	fmt.Println("Connected to MySQL!")
 }
+func getProducts(c *gin.Context) {
+	rows, err := db.Query("SELECT product_id, product_name, price, quantity FROM products")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
 
+	var books []map[string]interface{}
+	for rows.Next() {
+		var product_id, price, quantity int
+		var product_name string
+		rows.Scan(&product_id, &product_name, &quantity, &price)
+		books = append(books, gin.H{"product_id": product_id, "product_name": product_name, "price": price, "quantity": quantity})
+	}
+
+	c.JSON(http.StatusOK, books)
+}
 func addProduct(c *gin.Context) {
 	var product struct {
 		ID       int    `json:"product_id"`
@@ -51,5 +68,6 @@ func main() {
 	r := gin.Default()
 
 	r.POST("/products", addProduct)
+	r.GET("/products", getProducts)
 	r.Run(":8080")
 }
