@@ -12,6 +12,7 @@ import (
 )
 
 var db *sql.DB
+var mu sync.Mutex
 
 func connectDatabase() {
 	var err error
@@ -66,6 +67,9 @@ func getOrderByID(c *gin.Context) {
 	c.JSON(http.StatusOK, order)
 }
 func updateProduct(c *gin.Context) {
+
+	mu.Lock()
+	defer mu.Unlock()
 	id, _ := strconv.Atoi(c.Param("id"))
 	var update struct {
 		Price    *int `json:"price"`
@@ -79,6 +83,9 @@ func updateProduct(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Updated"})
 }
 func placeOrder(c *gin.Context) {
+
+	mu.Lock()
+	defer mu.Unlock()
 	var order struct {
 		CustomerID int `json:"customer_id"`
 		ProductID  int `json:"product_id"`
@@ -142,6 +149,8 @@ func placeOrder(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"message": "Yay Razors , Order placed successfully"})
 }
 func saveOrder(db *sql.DB, customerID, productID, quantity int, status string) {
+	mu.Lock()
+	defer mu.Unlock()
 	_, err := db.Exec("INSERT INTO orders (customer_id, product_id, quantity, order_status) VALUES (?, ?, ?, ?)", customerID, productID, quantity, status)
 	if err != nil {
 		fmt.Println("Failed to save order status:", err)
