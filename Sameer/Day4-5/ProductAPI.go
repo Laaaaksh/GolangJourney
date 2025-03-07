@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 var db *sql.DB
@@ -124,6 +125,10 @@ func saveOrder(db *sql.DB, customerID, productID, quantity int, status string) {
 	_, err := db.Exec("INSERT INTO orders (customer_id, product_id, quantity, order_status) VALUES (?, ?, ?, ?)", customerID, productID, quantity, status)
 	if err != nil {
 		fmt.Println("Failed to save order status:", err)
+	}
+	_, err2 := db.Exec("INSERT INTO customers (customer_id, last_order) VALUES (?, ?)", customerID, time.Now().Unix())
+	if err2 != nil {
+		fmt.Println("Failed to save order order time:", err)
 	}
 }
 func addProduct(c *gin.Context) {
