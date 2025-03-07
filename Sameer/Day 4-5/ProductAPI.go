@@ -52,6 +52,55 @@ func updateProduct(c *gin.Context) {
 	db.Exec("UPDATE products SET price = ?, quantity = ? WHERE product_id = ?", update.Price, update.Quantity, id)
 	c.JSON(http.StatusOK, gin.H{"message": "Updated"})
 }
+func placeOrder(c *gin.Context) {
+	var order struct {
+		CustomerID int `json:"customer_id"`
+		ProductID  int `json:"product_id"`
+		Quantity   int `json:"quantity"`
+	}
+
+	if err := c.BindJSON(&order); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "AAH! , Invalid input"})
+		return
+	}
+
+	var availableQuantity int
+	var status string
+	err := db.QueryRow("SELECT quantity FROM products WHERE product_id = ?", order.ProductID).Scan(&availableQuantity)
+	if err != nil {
+		status = "Failed"
+		c.JSON(http.StatusNotFound, gin.H{"error": "Let me check, Oh product not found!"})
+		saveOrder(db, order.CustomerID, order.ProductID, order.Quantity, status)
+		return
+	}
+
+	if order.Quantity > availableQuantity {
+		status = "Failed"
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Let me check, Oh not enough stocks!"})
+		saveOrder(db, order.CustomerID, order.ProductID, order.Quantity, status)
+
+		return
+	}
+
+	_, err = db.Exec("UPDATE products SET quantity = quantity - ? WHERE product_id = ?", order.Quantity, order.ProductID)
+	if err != nil {
+		status = "Failed"
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update stock"})
+		saveOrder(db, order.CustomerID, order.ProductID, order.Quantity, status)
+
+		return
+	}
+	status = "Order Placed"
+	saveOrder(db, order.CustomerID, order.ProductID, order.Quantity, status)
+
+	c.JSON(http.StatusCreated, gin.H{"message": "Yay Razors , Order placed successfully"})
+}
+func saveOrder(db *sql.DB, customerID, productID, quantity int, status string) {
+	_, err := db.Exec("INSERT INTO orders (customer_id, product_id, quantity, order_status) VALUES (?, ?, ?, ?)", customerID, productID, quantity, status)
+	if err != nil {
+		fmt.Println("Failed to save order status:", err)
+	}
+}
 func addProduct(c *gin.Context) {
 	var product struct {
 		ID       int    `json:"product_id"`
@@ -83,5 +132,6 @@ func main() {
 	r.POST("/products", addProduct)
 	r.GET("/products", getProducts)
 	r.PATCH("/product/:id", updateProduct)
+	r.POST("/order", placeOrder)
 	r.Run(":8080")
 }
