@@ -96,10 +96,14 @@ func placeOrder(c *gin.Context) {
 
 	err2 := db.QueryRow("SELECT last_order FROM customers WHERE customer_id = ?", order.CustomerID).Scan(&orderTime)
 	if err2 != nil {
-		status = "Failed"
-		c.JSON(http.StatusNotFound, gin.H{"error": "Let me check, Unable to Check last order details!"})
-		saveOrder(db, order.CustomerID, order.ProductID, order.Quantity, status)
-		return
+		if err2 == sql.ErrNoRows {
+			orderTime = 0
+		} else {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Let me check, Unable to Check last order details!"})
+			saveOrder(db, order.CustomerID, order.ProductID, order.Quantity, status)
+			return
+		}
+
 	}
 	if time.Now().Unix()-orderTime < 300 {
 		status = "Failed | Cool Down Active"
