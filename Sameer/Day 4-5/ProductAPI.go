@@ -39,6 +39,19 @@ func getProducts(c *gin.Context) {
 
 	c.JSON(http.StatusOK, books)
 }
+func updateProduct(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var update struct {
+		Price    *int `json:"price"`
+		Quantity *int `json:"quantity"`
+	}
+	if c.BindJSON(&update) != nil || (update.Price == nil || update.Quantity == nil) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
+	db.Exec("UPDATE products SET price = ?, quantity = ? WHERE product_id = ?", update.Price, update.Quantity, id)
+	c.JSON(http.StatusOK, gin.H{"message": "Updated"})
+}
 func addProduct(c *gin.Context) {
 	var product struct {
 		ID       int    `json:"product_id"`
@@ -69,5 +82,6 @@ func main() {
 
 	r.POST("/products", addProduct)
 	r.GET("/products", getProducts)
+	r.PATCH("/product/:id", updateProduct)
 	r.Run(":8080")
 }
