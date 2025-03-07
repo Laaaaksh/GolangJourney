@@ -92,6 +92,22 @@ func placeOrder(c *gin.Context) {
 
 	var availableQuantity int
 	var status string
+	var orderTime int64
+
+	err2 := db.QueryRow("SELECT last_order FROM customers WHERE customer_id = ?", order.CustomerID).Scan(&orderTime)
+	if err2 != nil {
+		status = "Failed"
+		c.JSON(http.StatusNotFound, gin.H{"error": "Let me check, Unable to Check last order details!"})
+		saveOrder(db, order.CustomerID, order.ProductID, order.Quantity, status)
+		return
+	}
+	if time.Now().Unix()-orderTime < 300 {
+		status = "Failed | Cool Down Active"
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Cooldown is Active, Please try again later!"})
+		saveOrder(db, order.CustomerID, order.ProductID, order.Quantity, status)
+		return
+	}
+
 	err := db.QueryRow("SELECT quantity FROM products WHERE product_id = ?", order.ProductID).Scan(&availableQuantity)
 	if err != nil {
 		status = "Failed"
