@@ -39,6 +39,31 @@ func getProducts(c *gin.Context) {
 
 	c.JSON(http.StatusOK, books)
 }
+func getOrderByID(c *gin.Context) {
+	orderID := c.Param("id")
+	type Order struct {
+		OrderID    int    `json:"order_id"`
+		CustomerID int    `json:"customer_id"`
+		ProductID  int    `json:"product_id"`
+		Quantity   int    `json:"quantity"`
+		Status     string `json:"order_status"`
+	}
+
+	var order Order
+	err := db.QueryRow("SELECT order_id, customer_id, product_id, quantity, order_status FROM orders WHERE order_id = ?", orderID).
+		Scan(&order.OrderID, &order.CustomerID, &order.ProductID, &order.Quantity, &order.Status)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch order details"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, order)
+}
 func updateProduct(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var update struct {
@@ -133,5 +158,7 @@ func main() {
 	r.GET("/products", getProducts)
 	r.PATCH("/product/:id", updateProduct)
 	r.POST("/order", placeOrder)
+	r.GET("/orders/:id", getOrderByID)
+
 	r.Run(":8080")
 }
