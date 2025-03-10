@@ -1,19 +1,29 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/redis/go-redis/v9"
 	"log"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 )
 
 var db *sql.DB
 var mu sync.Mutex
+var redisClient *redis.Client
 
+func connectRedis() {
+	redisClient = redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+	})
+	fmt.Println("Connected to Redis!")
+}
 func connectDatabase() {
 	var err error
 	dsn := "root:123456789@tcp(127.0.0.1:3306)/booksdb"
@@ -101,17 +111,28 @@ func placeOrder(c *gin.Context) {
 	var status string
 	var orderTime int64
 
-	err2 := db.QueryRow("SELECT last_order FROM customers WHERE customer_id = ?", order.CustomerID).Scan(&orderTime)
-	if err2 != nil {
-		if err2 == sql.ErrNoRows {
-			orderTime = 0
-		} else {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Let me check, Unable to Check last order details!"})
-			saveOrder(db, order.CustomerID, order.ProductID, order.Quantity, status)
-			return
-		}
+	ctx := context.Background()
+	key := fmt.Sprintf("customer:%d:last_order", order.CustomerID)
+	lastOrderTimeStr, err := redisClient.Get(ctx, key).Result()
 
+	if err == nil {
+		orderTime, _ = strconv.ParseInt(lastOrderTimeStr, 10, 64)
+	} else {
+		orderTime = 0
 	}
+	fmt.Println("Order Time:", orderTime)
+
+	// err2 := db.QueryRow("SELECT last_order FROM customers WHERE customer_id = ?", order.CustomerID).Scan(&orderTime)
+	// if err2 != nil {
+	// 	if err2 == sql.ErrNoRows {
+	// 		orderTime = 0
+	// 	} else {
+	// 		c.JSON(http.StatusNotFound, gin.H{"error": "Let me check, Unable to Check last order details!"})
+	// 		saveOrder(db, order.CustomerID, order.ProductID, order.Quantity, status)
+	// 		return
+	// 	}
+
+	// }
 	if time.Now().Unix()-orderTime < 300 {
 		status = "Failed | Cool Down Active"
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Cooldown is Active, Please try again later!"})
@@ -119,7 +140,7 @@ func placeOrder(c *gin.Context) {
 		return
 	}
 
-	err := db.QueryRow("SELECT quantity FROM products WHERE product_id = ?", order.ProductID).Scan(&availableQuantity)
+	err = db.QueryRow("SELECT quantity FROM products WHERE product_id = ?", order.ProductID).Scan(&availableQuantity)
 	if err != nil {
 		status = "Failed"
 		c.JSON(http.StatusNotFound, gin.H{"error": "Let me check, Oh product not found!"})
@@ -143,22 +164,24 @@ func placeOrder(c *gin.Context) {
 
 		return
 	}
+
 	status = "Order Placed"
 	saveOrder(db, order.CustomerID, order.ProductID, order.Quantity, status)
 
 	c.JSON(http.StatusCreated, gin.H{"message": "Yay Razors , Order placed successfully"})
+	redisClient.Set(ctx, key, time.Now().Unix(), 5*time.Minute)
+
 }
 func saveOrder(db *sql.DB, customerID, productID, quantity int, status string) {
-	mu.Lock()
-	defer mu.Unlock()
+
 	_, err := db.Exec("INSERT INTO orders (customer_id, product_id, quantity, order_status) VALUES (?, ?, ?, ?)", customerID, productID, quantity, status)
 	if err != nil {
 		fmt.Println("Failed to save order status:", err)
 	}
-	_, err2 := db.Exec("INSERT INTO customers (customer_id, last_order) VALUES (?, ?)", customerID, time.Now().Unix())
-	if err2 != nil {
-		fmt.Println("Failed to save order order time:", err)
-	}
+	// _, err2 := db.Exec("INSERT INTO customers (customer_id, last_order) VALUES (?, ?)", customerID, time.Now().Unix())
+	// if err2 != nil {
+	// 	fmt.Println("Failed to save order order time:", err)
+	// }
 }
 func addProduct(c *gin.Context) {
 	var product struct {
@@ -185,7 +208,7 @@ func addProduct(c *gin.Context) {
 }
 func main() {
 	connectDatabase()
-
+	connectRedis()
 	r := gin.Default()
 
 	r.POST("/products", addProduct)
