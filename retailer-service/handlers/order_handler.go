@@ -1,9 +1,10 @@
 package handlers
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"net/http"
 	"retailer-service/models"
 	"retailer-service/services"
 )
@@ -37,7 +38,11 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 		order.Status = "order placed"
 	}
 
-	if err := h.Service.PlaceOrder(&order); err != nil {
+	// Create a context from the Gin context
+	ctx := c.Request.Context()
+
+	// Call the service with the context
+	if err := h.Service.PlaceOrder(ctx, &order); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -49,6 +54,7 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 		"status":     order.Status,
 	})
 }
+
 func (h *OrderHandler) GetOrder(c *gin.Context) {
 	id := c.Param("id")
 

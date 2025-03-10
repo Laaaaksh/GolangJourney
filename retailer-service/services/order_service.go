@@ -1,41 +1,63 @@
 package services
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"retailer-service/models"
 	"retailer-service/repositories"
-	"sync"
 	"time"
+
+	"github.com/go-redis/redis/v8"
 )
 
 type OrderService interface {
-	PlaceOrder(order *models.Order) error
+	PlaceOrder(ctx context.Context, order *models.Order) error
 	GetOrder(id string) (*models.Order, error)
 }
 
 type orderService struct {
 	OrderRepo repositories.OrderRepository
-	CoolDown  map[string]int64
-	Mutex     sync.Mutex
+	redis     *redis.Client
 }
 
-func NewOrderService(orderRepo repositories.OrderRepository) OrderService {
+func NewOrderService(orderRepo repositories.OrderRepository, redisClient *redis.Client) OrderService {
 	return &orderService{
 		OrderRepo: orderRepo,
-		CoolDown:  make(map[string]int64),
+		redis:     redisClient,
 	}
 }
 
-func (s *orderService) PlaceOrder(order *models.Order) error {
-	s.Mutex.Lock()
-	defer s.Mutex.Unlock()
+// Lua script for atomic cooldown check and update
+var cooldownScript = redis.NewScript(`
+local key = KEYS[1]
+local current_time = tonumber(ARGV[1])
+local cooldown = tonumber(ARGV[2])
 
-	lastOrderTime, exists := s.CoolDown[order.CustomerID]
-	if exists && time.Now().Unix()-lastOrderTime < 300 { // 5 minutes cool-down
+local last_order = redis.call("GET", key)
+if last_order then
+    if current_time - tonumber(last_order) < cooldown then
+        return 0
+    end
+end
+
+redis.call("SET", key, current_time, "EX", cooldown)
+return 1
+`)
+
+func (s *orderService) PlaceOrder(ctx context.Context, order *models.Order) error {
+	// Execute Lua script atomically
+	result, err := cooldownScript.Run(ctx, s.redis, []string{order.CustomerID},
+		time.Now().Unix(), 300).Int()
+	if err != nil {
+		return fmt.Errorf("redis error: %v", err)
+	}
+
+	if result == 0 {
 		return errors.New("customer is in cool-down period")
 	}
 
-	s.CoolDown[order.CustomerID] = time.Now().Unix()
+	// Proceed with order creation
 	return s.OrderRepo.Create(order)
 }
 

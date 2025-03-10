@@ -1,18 +1,34 @@
 package main
 
 import (
+	"context"
 	"github.com/gin-gonic/gin"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
+	"log"
 	"retailer-service/handlers"
 	"retailer-service/middleware"
+
 	"retailer-service/models"
 	"retailer-service/repositories"
 	"retailer-service/services"
+
+	"github.com/go-redis/redis/v8"
+
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
 
 func main() {
 	// Connect to MySQL
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379", // Redis server address
+		Password: "",               // No password
+		DB:       0,                // Default DB
+	})
+
+	// Ping Redis to verify connection
+	if err := redisClient.Ping(context.Background()).Err(); err != nil {
+		log.Fatalf("Failed to connect to Redis: %v", err)
+	}
 	dsn := "root:Gymboi@10082001@tcp(127.0.0.1:3306)/go_gin_db?charset=utf8mb4&parseTime=True&loc=Local"
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
@@ -28,7 +44,7 @@ func main() {
 
 	// Initialize services
 	productService := services.NewProductService(productRepo)
-	orderService := services.NewOrderService(orderRepo)
+	orderService := services.NewOrderService(orderRepo, redisClient)
 
 	// Initialize handlers
 	productHandler := handlers.NewProductHandler(productService)
